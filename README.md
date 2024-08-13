@@ -1,6 +1,6 @@
 # Dreo Fan
 
-This is a custom component for home assistant to Dreo Smart Device Integration.
+This is a custom component provided by Dreo team for integrating home assistant with Dreo smart devices.
 
 ## Supported devices
 
