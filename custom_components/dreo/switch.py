@@ -14,8 +14,16 @@ if TYPE_CHECKING:
 
     from . import DreoConfigEntry
     from .coordinator import DreoDataUpdateCoordinator
-from .const import DreoEntityConfigSpec, DreoErrorCode
+from .const import HUMIDIFIER_RGB_COLOR_MODELS, DreoEntityConfigSpec, DreoErrorCode
 from .entity import DreoEntity
+
+# Toggle fields whose state is never reported by the device, so their switch
+# entities would auto-revert in the UI. We suppress them per-model when a
+# better entity (e.g. the RGB light) already covers the capability.
+_SUPPRESSED_TOGGLE_FIELDS_BY_MODEL: dict[str, frozenset[str]] = {
+    model: frozenset({"ambient_Light_switch", "ambient_light_switch"})
+    for model in HUMIDIFIER_RGB_COLOR_MODELS
+}
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -61,12 +69,22 @@ async def async_setup_entry(
                 "mute_switch": DreoErrorCode.SET_MUTE_SWITCH_FAILED,
             }
 
+            suppressed = _SUPPRESSED_TOGGLE_FIELDS_BY_MODEL.get(
+                device.get("model"), frozenset()
+            )
             for toggle_switch in toggle_switches.values():
                 field = toggle_switch.get("field")
 
                 if not field:
                     _LOGGER.warning(
                         "Skipping toggle switch with missing field in model %s",
+                        device.get("model"),
+                    )
+                    continue
+                if field in suppressed:
+                    _LOGGER.debug(
+                        "Suppressing toggle %s on model %s (covered by another entity)",
+                        field,
                         device.get("model"),
                     )
                     continue

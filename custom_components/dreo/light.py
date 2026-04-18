@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from . import DreoConfigEntry
 from .const import (
     DOMAIN,
+    HUMIDIFIER_RGB_COLOR_MODELS,
     DreoDeviceType,
     DreoDirective,
     DreoEntityConfigSpec,
@@ -86,12 +87,18 @@ async def async_setup_entry(
             if not device_id:
                 continue
 
-            if Platform.LIGHT not in device.get(
+            model = device.get("model")
+            entity_supports = device.get(
                 DreoEntityConfigSpec.TOP_CONFIG, {}
-            ).get("entitySupports", []):
-                _LOGGER.warning(
-                    "No light entity support for model %s", device.get("model")
-                )
+            ).get("entitySupports", [])
+            # DR-HHM005S and friends don't declare "light" in entitySupports even
+            # though they have an RGB night light. Force the entity for those models.
+            force_humidifier_rgb = (
+                device_type == DreoDeviceType.HUMIDIFIER
+                and model in HUMIDIFIER_RGB_COLOR_MODELS
+            )
+            if Platform.LIGHT not in entity_supports and not force_humidifier_rgb:
+                _LOGGER.warning("No light entity support for model %s", model)
                 continue
 
             coordinator = config_entry.runtime_data.coordinators.get(device_id)
@@ -106,7 +113,7 @@ async def async_setup_entry(
             elif device_type == DreoDeviceType.RGBLIGHT_CEILING_FAN:
                 lights.append(DreoRGBLight(device, coordinator))
                 lights.append(DreoRegularLight(device, coordinator))
-            elif device_type == DreoDeviceType.HEC or DreoDeviceType.HUMIDIFIER:
+            elif device_type in (DreoDeviceType.HEC, DreoDeviceType.HUMIDIFIER):
                 lights.append(DreoRGBLight(device, coordinator))
         if lights:
             async_add_entities(lights)
@@ -135,10 +142,16 @@ class DreoRGBLight(DreoEntity, LightEntity):
         device_id = device.get("deviceSn")
         self._attr_unique_id = f"{device_id}_rgb_light"
         self._device_type = coordinator.device_type
+        # Models in this set use the humidifier-native `rgbmode` + `rgb_color` dialect
+        # (no brightness, no effects). All other RGB devices keep the atm* dialect.
+        self._uses_humidifier_rgb_dialect = (
+            self._device_type == DreoDeviceType.HUMIDIFIER
+            and device.get("model") in HUMIDIFIER_RGB_COLOR_MODELS
+        )
 
         rgb_light_config = coordinator.model_config.get(
             DreoEntityConfigSpec.RGBLIGHT_ENTITY_CONF, {}
-        )
+        ) or {}
 
         self._attr_effect_list = rgb_light_config.get(DreoFeatureSpec.LIGHT_MODES)
         self._brightness_percentage = tuple(
@@ -194,6 +207,20 @@ class DreoRGBLight(DreoEntity, LightEntity):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn on the RGB light."""
+        if self._uses_humidifier_rgb_dialect:
+            command_params: dict[str, Any] = {
+                DreoDirective.HUMIDIFIER_RGB_MODE: "Custom"
+            }
+            if ATTR_RGB_COLOR in kwargs:
+                r, g, b = kwargs[ATTR_RGB_COLOR]
+                command_params[DreoDirective.HUMIDIFIER_RGB_COLOR] = (
+                    (r << 16) | (g << 8) | b
+                )
+            await self.async_send_command_and_update(
+                DreoErrorCode.TURN_ON_FAILED, **command_params
+            )
+            return
+
         command_params: dict[str, Any] = {DreoDirective.AMBIENT_SWITCH: True}
 
         if ATTR_RGB_COLOR in kwargs:
@@ -256,6 +283,12 @@ class DreoRGBLight(DreoEntity, LightEntity):
 
     async def async_turn_off(self, **_: Any) -> None:
         """Turn off the RGB light."""
+        if self._uses_humidifier_rgb_dialect:
+            await self.async_send_command_and_update(
+                DreoErrorCode.TURN_OFF_FAILED,
+                **{DreoDirective.HUMIDIFIER_RGB_MODE: "Off"},
+            )
+            return
         await self.async_send_command_and_update(
             DreoErrorCode.TURN_OFF_FAILED, ambient_switch=False
         )
@@ -263,6 +296,8 @@ class DreoRGBLight(DreoEntity, LightEntity):
     @property
     def supported_features(self) -> LightEntityFeature:
         """Return the supported features based on current mode."""
+        if self._uses_humidifier_rgb_dialect:
+            return LightEntityFeature(0)
         return LightEntityFeature.TRANSITION | LightEntityFeature.EFFECT
 
     @property
@@ -289,7 +324,12 @@ class DreoRGBLight(DreoEntity, LightEntity):
             return
 
         color_int = (red << 16) | (green << 8) | blue
-        command_params: dict[str, Any] = {DreoDirective.AMBIENT_RGB_COLOR: color_int}
+        color_key = (
+            DreoDirective.HUMIDIFIER_RGB_COLOR
+            if self._uses_humidifier_rgb_dialect
+            else DreoDirective.AMBIENT_RGB_COLOR
+        )
+        command_params: dict[str, Any] = {color_key: color_int}
 
         await self.async_send_command_and_update(
             DreoErrorCode.TURN_ON_FAILED, **command_params
