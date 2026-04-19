@@ -209,7 +209,7 @@ class DreoRGBLight(DreoEntity, LightEntity):
         """Turn on the RGB light."""
         if self._uses_humidifier_rgb_dialect:
             command_params: dict[str, Any] = {
-                DreoDirective.HUMIDIFIER_RGB_MODE: "Custom"
+                DreoDirective.HUMIDIFIER_LED_LEVEL: "On"
             }
             if ATTR_RGB_COLOR in kwargs:
                 r, g, b = kwargs[ATTR_RGB_COLOR]
@@ -286,7 +286,7 @@ class DreoRGBLight(DreoEntity, LightEntity):
         if self._uses_humidifier_rgb_dialect:
             await self.async_send_command_and_update(
                 DreoErrorCode.TURN_OFF_FAILED,
-                **{DreoDirective.HUMIDIFIER_RGB_MODE: "Off"},
+                **{DreoDirective.HUMIDIFIER_LED_LEVEL: "Off"},
             )
             return
         await self.async_send_command_and_update(

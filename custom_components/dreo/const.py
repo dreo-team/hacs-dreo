@@ -83,6 +83,7 @@ class DreoDirective(StrEnum):
     AMBIENT_RGB_SPEED = "atmspeed"
     HUMIDIFIER_RGB_MODE = "rgbmode"
     HUMIDIFIER_RGB_COLOR = "rgb_color"
+    HUMIDIFIER_LED_LEVEL = "ledlevel"
     LIGHT_BRIGHTNESS = "brightness"
     LIGHT_COLOR_TEMP = "colortemp"
     RGB_HUMIDITY_THRESHOLD = "rgb_threshold"
