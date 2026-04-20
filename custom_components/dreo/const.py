@@ -81,6 +81,8 @@ class DreoDirective(StrEnum):
     AMBIENT_RGB_COLOR = "atmcolor"
     AMBIENT_RGB_BRIGHTNESS = "atmbri"
     AMBIENT_RGB_SPEED = "atmspeed"
+    HUMIDIFIER_RGB_MODE = "rgbmode"
+    HUMIDIFIER_RGB_COLOR = "rgb_color"
     LIGHT_BRIGHTNESS = "brightness"
     LIGHT_COLOR_TEMP = "colortemp"
     RGB_HUMIDITY_THRESHOLD = "rgb_threshold"
@@ -121,6 +123,12 @@ class DreoDeviceType(StrEnum):
 
 
 CIR_FAN_SWING_ENTITY = "swing_direction"
+
+# Humidifier models whose RGB night light uses the `rgb_color` + `rgbmode` directives
+# (distinct from the `atmcolor`/`ambient_switch` dialect used by circulation fans and HEC).
+# These models typically omit `"light"` from their cloud-side entitySupports list, so we
+# force-create a light entity for them.
+HUMIDIFIER_RGB_COLOR_MODELS = frozenset({"DR-HHM005S"})
 
 
 class DreoErrorCode(StrEnum):
