@@ -148,6 +148,9 @@ class DreoRGBLight(DreoEntity, LightEntity):
             self._device_type == DreoDeviceType.HUMIDIFIER
             and device.get("model") in HUMIDIFIER_RGB_COLOR_MODELS
         )
+        # HHM005S has no on/off directive for the RGB night-light; we treat
+        # `rgb_color=0` as off and restore this color on turn_on.
+        self._last_nonzero_rgb_color: int | None = None
 
         rgb_light_config = coordinator.model_config.get(
             DreoEntityConfigSpec.RGBLIGHT_ENTITY_CONF, {}
@@ -208,16 +211,18 @@ class DreoRGBLight(DreoEntity, LightEntity):
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn on the RGB light."""
         if self._uses_humidifier_rgb_dialect:
-            command_params: dict[str, Any] = {
-                DreoDirective.HUMIDIFIER_LED_LEVEL: "On"
-            }
+            # HHM005S has no on/off directive for the RGB night-light —
+            # `rgb_color=0` is the physical "off". So "on" means restoring
+            # a non-zero color: either the one the caller sent, or the last
+            # non-zero color we observed (cached on toggle-off), or white.
             if ATTR_RGB_COLOR in kwargs:
                 r, g, b = kwargs[ATTR_RGB_COLOR]
-                command_params[DreoDirective.HUMIDIFIER_RGB_COLOR] = (
-                    (r << 16) | (g << 8) | b
-                )
+                color_int = (r << 16) | (g << 8) | b
+            else:
+                color_int = self._last_nonzero_rgb_color or 0xFFFFFF
             await self.async_send_command_and_update(
-                DreoErrorCode.TURN_ON_FAILED, **command_params
+                DreoErrorCode.TURN_ON_FAILED,
+                **{DreoDirective.HUMIDIFIER_RGB_COLOR: color_int},
             )
             return
 
@@ -284,9 +289,13 @@ class DreoRGBLight(DreoEntity, LightEntity):
     async def async_turn_off(self, **_: Any) -> None:
         """Turn off the RGB light."""
         if self._uses_humidifier_rgb_dialect:
+            # Cache the currently-displayed color so turn_on can restore it.
+            current = self.coordinator.data
+            if current and _has_rgb_features(current) and current.rgb_color:
+                self._last_nonzero_rgb_color = int(current.rgb_color)
             await self.async_send_command_and_update(
                 DreoErrorCode.TURN_OFF_FAILED,
-                **{DreoDirective.HUMIDIFIER_LED_LEVEL: "Off"},
+                **{DreoDirective.HUMIDIFIER_RGB_COLOR: 0},
             )
             return
         await self.async_send_command_and_update(

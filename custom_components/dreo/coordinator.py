@@ -914,13 +914,11 @@ class DreoHumidifierDeviceData(DreoGenericDeviceData):
         if (hum_rgb_mode := state.get(DreoDirective.HUMIDIFIER_RGB_MODE)) is not None:
             humidifier_data.rgb_mode = str(hum_rgb_mode)
 
+        # HHM005S has no separate on/off directive for the RGB night-light:
+        # `rgb_color=0` is the physical off state, so derive rgb_state from that.
         if (hum_rgb_color := state.get(DreoDirective.HUMIDIFIER_RGB_COLOR)) is not None:
             humidifier_data.rgb_color = int(hum_rgb_color)
-
-        # ledlevel ("On"/"Off") is the authoritative on/off switch on HHM005S.
-        # rgbmode ("Custom"/...) describes the animation mode but doesn't accept "Off".
-        if (led_level := state.get(DreoDirective.HUMIDIFIER_LED_LEVEL)) is not None:
-            humidifier_data.rgb_state = str(led_level) == "On"
+            humidifier_data.rgb_state = int(hum_rgb_color) != 0
 
         if (
             rgb_brightness := state.get(DreoDirective.AMBIENT_RGB_BRIGHTNESS)
