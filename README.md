@@ -51,7 +51,7 @@ The following product types are supported. All variants have been tested.
 | Circulation Fans | DR-HAF, DR-HPF | Circulation fans with oscillation control |
 | Ceiling Fans | DR-HCF | Ceiling fans with light control |
 | Air Conditioners | DR-HAC | Portable air conditioners |
-| Humidifiers | DR-HEC | Evaporative coolers |
+| Humidifiers | DR-HHM, DR-HEC | Smart humidifiers and evaporative coolers |
 
 Models that have been specifically tested can be found below.
 
@@ -123,6 +123,7 @@ Features for Air Conditioners include:
 
 #### Humidifiers
 
+- HM735S Smart Humidifier (DR-HHM005S)
 - Evaporative Cooler 712S (DR-HEC002S)
 
 Features for Humidifiers include:
@@ -130,7 +131,9 @@ Features for Humidifiers include:
 - Preset modes (Normal, Auto, Sleep, Natural)
 - Set Speed (1-4)
 - Humidity control (40-90%)
-- Oscillate (true, false)
+- RGB night light (DR-HHM005S)
+- Sleep mode switch (DR-HHM005S)
+- Oscillate (true, false, DR-HEC002S)
 
 
 Product name could be found on the package box, user manual, or the label on the device.
