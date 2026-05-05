@@ -907,6 +907,19 @@ class DreoHumidifierDeviceData(DreoGenericDeviceData):
         if (rgb_color := state.get(DreoDirective.AMBIENT_RGB_COLOR)) is not None:
             humidifier_data.rgb_color = int(rgb_color)
 
+        # Models like DR-HHM005S report the night-light state under different keys:
+        # rgbmode ("Custom"/"Off"/...) and rgb_color (packed 24-bit int). Parse these
+        # when present; they override the atm* values since this firmware never reports
+        # the atm* keys.
+        if (hum_rgb_mode := state.get(DreoDirective.HUMIDIFIER_RGB_MODE)) is not None:
+            humidifier_data.rgb_mode = str(hum_rgb_mode)
+
+        # HHM005S has no separate on/off directive for the RGB night-light:
+        # `rgb_color=0` is the physical off state, so derive rgb_state from that.
+        if (hum_rgb_color := state.get(DreoDirective.HUMIDIFIER_RGB_COLOR)) is not None:
+            humidifier_data.rgb_color = int(hum_rgb_color)
+            humidifier_data.rgb_state = int(hum_rgb_color) != 0
+
         if (
             rgb_brightness := state.get(DreoDirective.AMBIENT_RGB_BRIGHTNESS)
         ) is not None:

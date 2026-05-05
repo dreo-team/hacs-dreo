@@ -14,8 +14,27 @@ if TYPE_CHECKING:
 
     from . import DreoConfigEntry
     from .coordinator import DreoDataUpdateCoordinator
-from .const import DreoEntityConfigSpec, DreoErrorCode
+from .const import (
+    HUMIDIFIER_RGB_COLOR_MODELS,
+    DreoDeviceType,
+    DreoDirective,
+    DreoEntityConfigSpec,
+    DreoErrorCode,
+    DreoFeatureSpec,
+)
+from .coordinator import DreoHumidifierDeviceData
 from .entity import DreoEntity
+
+SLEEP_MODE = "Sleep"
+DEFAULT_NON_SLEEP_MODE = "Manual"
+
+# Toggle fields whose state is never reported by the device, so their switch
+# entities would auto-revert in the UI. We suppress them per-model when a
+# better entity (e.g. the RGB light) already covers the capability.
+_SUPPRESSED_TOGGLE_FIELDS_BY_MODEL: dict[str, frozenset[str]] = {
+    model: frozenset({"ambient_Light_switch", "ambient_light_switch"})
+    for model in HUMIDIFIER_RGB_COLOR_MODELS
+}
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -29,7 +48,7 @@ async def async_setup_entry(
 
     @callback
     def async_add_switch_entities() -> None:
-        entities: list[DreoToggleSwitch] = []
+        entities: list[SwitchEntity] = []
 
         for device in config_entry.runtime_data.devices:
             device_id = device.get("deviceSn")
@@ -37,14 +56,20 @@ async def async_setup_entry(
                 continue
 
             device_config = device.get(DreoEntityConfigSpec.TOP_CONFIG, {})
+            coordinator = config_entry.runtime_data.coordinators.get(device_id)
+            if not coordinator:
+                continue
+
+            if (
+                device.get("deviceType") == DreoDeviceType.HUMIDIFIER
+                and _supports_sleep_mode(device_config)
+            ):
+                entities.append(DreoHumidifierSleepModeSwitch(device, coordinator))
+
             if Platform.SWITCH not in device_config.get("entitySupports", []):
                 _LOGGER.warning(
                     "No switch entity support for model %s", device.get("model")
                 )
-                continue
-
-            coordinator = config_entry.runtime_data.coordinators.get(device_id)
-            if not coordinator:
                 continue
 
             toggle_switches = device_config.get(
@@ -61,12 +86,22 @@ async def async_setup_entry(
                 "mute_switch": DreoErrorCode.SET_MUTE_SWITCH_FAILED,
             }
 
+            suppressed = _SUPPRESSED_TOGGLE_FIELDS_BY_MODEL.get(
+                device.get("model"), frozenset()
+            )
             for toggle_switch in toggle_switches.values():
                 field = toggle_switch.get("field")
 
                 if not field:
                     _LOGGER.warning(
                         "Skipping toggle switch with missing field in model %s",
+                        device.get("model"),
+                    )
+                    continue
+                if field in suppressed:
+                    _LOGGER.debug(
+                        "Suppressing toggle %s on model %s (covered by another entity)",
+                        field,
                         device.get("model"),
                     )
                     continue
@@ -193,3 +228,58 @@ class DreoToggleSwitch(DreoEntity, SwitchEntity):
         if self._field == "fanOnTempMet_switch":
             return "mdi:weather-windy" if is_on else "mdi:air-filter"
         return None
+
+
+def _supports_sleep_mode(device_config: dict[str, Any]) -> bool:
+    """Return True if the humidifier advertises Sleep as a preset mode."""
+    humidifier_config = device_config.get(
+        DreoEntityConfigSpec.HUMIDIFIER_ENTITY_CONF, {}
+    )
+    mode_config = humidifier_config.get(DreoFeatureSpec.HUMIDIFIER_MODE_CONFIG, {})
+    return SLEEP_MODE in (mode_config.get(DreoFeatureSpec.PRESET_MODES) or [])
+
+
+class DreoHumidifierSleepModeSwitch(DreoEntity, SwitchEntity):
+    """Switch that toggles Sleep mode on a Dreo humidifier.
+
+    Exists because HomeKit's humidifier accessory only exposes humidify/off,
+    so Sleep mode isn't reachable from Apple Home without a separate switch.
+    """
+
+    _attr_icon = "mdi:weather-night"
+
+    def __init__(
+        self,
+        device: dict[str, Any],
+        coordinator: DreoDataUpdateCoordinator,
+    ) -> None:
+        """Initialize the Sleep-mode switch."""
+        super().__init__(device, coordinator, "sleep_mode", "Sleep Mode")
+        self._last_non_sleep_mode: str = DEFAULT_NON_SLEEP_MODE
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Refresh is_on from coordinator mode; remember last non-Sleep mode."""
+        data = self.coordinator.data
+        if isinstance(data, DreoHumidifierDeviceData) and data.mode:
+            self._attr_is_on = data.mode == SLEEP_MODE
+            if data.mode != SLEEP_MODE:
+                self._last_non_sleep_mode = data.mode
+        super()._handle_coordinator_update()
+
+    async def async_turn_on(self, **_: Any) -> None:
+        """Switch the humidifier into Sleep mode (powering it on if needed)."""
+        params: dict[str, Any] = {DreoDirective.MODE: SLEEP_MODE}
+        data = self.coordinator.data
+        if not (isinstance(data, DreoHumidifierDeviceData) and data.is_on):
+            params[DreoDirective.POWER_SWITCH] = True
+        await self.async_send_command_and_update(
+            DreoErrorCode.SET_HUMIDIFIER_MODE_FAILED, **params
+        )
+
+    async def async_turn_off(self, **_: Any) -> None:
+        """Leave Sleep mode by restoring the previous mode (default Manual)."""
+        await self.async_send_command_and_update(
+            DreoErrorCode.SET_HUMIDIFIER_MODE_FAILED,
+            **{DreoDirective.MODE: self._last_non_sleep_mode},
+        )
