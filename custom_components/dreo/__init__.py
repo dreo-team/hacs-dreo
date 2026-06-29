@@ -7,12 +7,17 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
+from homeassistant.const import (
+    CONF_PASSWORD,
+    CONF_SCAN_INTERVAL,
+    CONF_USERNAME,
+    Platform,
+)
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from pydreo.client import DreoClient
 from pydreo.exceptions import DreoBusinessException, DreoException
 
-from .const import DreoEntityConfigSpec
+from .const import DEFAULT_SCAN_INTERVAL, DreoEntityConfigSpec
 from .coordinator import DreoDataUpdateCoordinator
 
 if TYPE_CHECKING:
@@ -73,10 +78,18 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: DreoConfigEntry) 
     client, devices = await async_login(hass, username, password)
     coordinators: dict[str, DreoDataUpdateCoordinator] = {}
 
+    scan_interval = int(
+        config_entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+    )
+
     for device in devices:
-        await async_setup_device_coordinator(hass, client, device, coordinators)
+        await async_setup_device_coordinator(
+            hass, client, device, coordinators, scan_interval
+        )
 
     config_entry.runtime_data = DreoData(client, devices, coordinators)
+
+    config_entry.async_on_unload(config_entry.add_update_listener(async_update_options))
 
     await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
 
@@ -91,11 +104,19 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: DreoConfigEntry) 
     return True
 
 
+async def async_update_options(
+    hass: HomeAssistant, config_entry: DreoConfigEntry
+) -> None:
+    """Reload the entry when options change so the new scan interval applies."""
+    await hass.config_entries.async_reload(config_entry.entry_id)
+
+
 async def async_setup_device_coordinator(
     hass: HomeAssistant,
     client: DreoClient,
     device: dict[str, Any],
     coordinators: dict[str, DreoDataUpdateCoordinator],
+    scan_interval: int = DEFAULT_SCAN_INTERVAL,
 ) -> None:
     """Set up coordinator for a single device."""
     device_model = device.get("model")
@@ -115,7 +136,7 @@ async def async_setup_device_coordinator(
         return
 
     coordinator = DreoDataUpdateCoordinator(
-        hass, client, device_id, device_type, model_config
+        hass, client, device_id, device_type, model_config, scan_interval
     )
 
     if coordinator.data_processor is None:

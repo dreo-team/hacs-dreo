@@ -19,6 +19,17 @@
       }
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Dreo options",
+        "description": "How often Home Assistant polls the Dreo cloud for device state. Higher values make fewer API calls; changes made from the Dreo app or device may take up to this long to appear.",
+        "data": {
+          "scan_interval": "Polling interval (seconds)"
+        }
+      }
+    }
+  },
   "exceptions": {
     "humidity_not_supported_in_mode": {
       "message": "Humidity control is not supported in the current mode"
