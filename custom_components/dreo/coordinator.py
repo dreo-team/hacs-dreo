@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
     from pydreo.client import DreoClient
 from .const import (
+    DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     DreoDeviceType,
     DreoDirective,
@@ -26,7 +27,6 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-UPDATE_INTERVAL = timedelta(seconds=15)
 MIN_RANGE_LEN = 2
 
 
@@ -1048,20 +1048,21 @@ DreoDeviceData = (
 class DreoDataUpdateCoordinator(DataUpdateCoordinator[DreoDeviceData | None]):
     """Class to manage fetching Dreo data."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         hass: HomeAssistant,
         client: DreoClient,
         device_id: str,
         device_type: str,
         model_config: dict[str, Any],
+        scan_interval: int = DEFAULT_SCAN_INTERVAL,
     ) -> None:
         """Initialize the coordinator."""
         super().__init__(
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=UPDATE_INTERVAL,
+            update_interval=timedelta(seconds=scan_interval),
         )
         self.client = client
         self.device_id = device_id

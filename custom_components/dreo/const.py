@@ -4,6 +4,12 @@ from enum import StrEnum
 
 DOMAIN = "dreo"
 
+# Cloud polling interval (seconds). The Dreo cloud API is rate limited, so the
+# default is intentionally conservative; it can be tuned via the options flow.
+DEFAULT_SCAN_INTERVAL = 60
+MIN_SCAN_INTERVAL = 15
+MAX_SCAN_INTERVAL = 3600
+
 
 class DreoEntityConfigSpec(StrEnum):
     """Dreo config keys."""
