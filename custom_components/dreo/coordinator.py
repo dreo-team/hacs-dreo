@@ -870,12 +870,13 @@ class DreoHumidifierDeviceData(DreoGenericDeviceData):
         if (mode := state.get(DreoDirective.MODE)) is not None:
             humidifier_data.mode = str(mode)
 
-        # Humidity ranges - different for different modes
-        if (rh_auto := state.get("rh_auto")) is not None:
-            humidifier_data.target_humidity = float(rh_auto)
-
-        if (rh_sleep := state.get("rh_sleep")) is not None:
-            humidifier_data.target_humidity = float(rh_sleep)
+        # Humidity targets are stored separately for each mode.
+        target_humidity = {
+            "Auto": state.get("rh_auto"),
+            "Sleep": state.get("rh_sleep"),
+        }.get(humidifier_data.mode)
+        if target_humidity is not None:
+            humidifier_data.target_humidity = float(target_humidity)
 
         if (humidity := state.get("humidity_sensor")) is not None:
             humidifier_data.current_humidity = float(humidity)
